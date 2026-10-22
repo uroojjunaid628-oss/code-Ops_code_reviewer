@@ -1,0 +1,239 @@
+:root {
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --text: #1c2430;
+  --muted: #5b6775;
+  --border: #d9e0e8;
+  --accent: #1f6feb;
+  --error: #b42318;
+  --critical: #7a1d1d;
+  --high: #b42318;
+  --medium: #b54708;
+  --low: #175cd3;
+  --info: #475467;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.page {
+  width: min(880px, calc(100% - 2rem));
+  margin: 2rem auto 3rem;
+}
+
+.hero h1,
+.card h2 {
+  margin: 0 0 0.5rem;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.lede,
+.label,
+.empty,
+.loading,
+.count {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.4rem;
+  margin-top: 1rem;
+}
+
+form label {
+  display: block;
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+}
+
+form label:first-of-type {
+  margin-top: 0;
+}
+
+input {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+button {
+  margin-top: 1rem;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.75rem 1.1rem;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--error);
+  margin: 0.75rem 0 0;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: #e8eef7;
+  text-transform: lowercase;
+}
+
+.status-badge.queued,
+.status-badge.running {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-badge.completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.completed_partial {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.count {
+  margin: 0;
+  font-weight: 600;
+}
+
+.finding {
+  border: 1px solid var(--border);
+  border-left-width: 6px;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 0.9rem;
+}
+
+.finding.critical {
+  border-left-color: var(--critical);
+}
+
+.finding.high {
+  border-left-color: var(--high);
+}
+
+.finding.medium {
+  border-left-color: var(--medium);
+}
+
+.finding.low {
+  border-left-color: var(--low);
+}
+
+.finding.info,
+.finding.unknown {
+  border-left-color: var(--info);
+}
+
+.finding-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.severity {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.finding.critical .severity {
+  color: var(--critical);
+}
+
+.finding.high .severity {
+  color: var(--high);
+}
+
+.finding.medium .severity {
+  color: var(--medium);
+}
+
+.finding.low .severity {
+  color: var(--low);
+}
+
+.finding.info .severity,
+.finding.unknown .severity {
+  color: var(--info);
+}
+
+.meta,
+.source {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 0.35rem 0;
+}
+
+.finding h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.finding dt {
+  font-weight: 600;
+  margin-top: 0.6rem;
+}
+
+.finding dd {
+  margin: 0.2rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 640px) {
+  .report-header,
+  .finding-top {
+    flex-direction: column;
+  }
+}

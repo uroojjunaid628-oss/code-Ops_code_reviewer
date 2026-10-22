@@ -1,0 +1,26 @@
+# Environment & Secrets
+.env
+.env.local
+
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Virtual Environment & Packaging
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Temporary Review Workspaces
+.workspace/
+.workspaces/
+.git-test/
+
+# Local Databases
+*.db
+*.sqlite3
