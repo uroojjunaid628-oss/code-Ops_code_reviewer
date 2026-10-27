@@ -6,21 +6,22 @@ from sqlalchemy.orm import Session
 
 from reviewer.api.dependencies import get_db
 from reviewer.database import SessionLocal
-from reviewer.models import ReviewFinding, ReviewJob
+from reviewer.models import ReviewFinding, ReviewJob, ReviewReport
 from reviewer.schemas.review_job import (
     JobStatus,
     ReviewFindingResponse,
     ReviewJobCreate,
     ReviewJobResponse,
+    ReviewReportResponse,
 )
+from reviewer.services.report import build_review_report
 from reviewer.services.review import ReviewService
 
 router = APIRouter(prefix="/review", tags=["Review Jobs"])
 
 
-
 def process_review_job(job_id: str) -> None:
-    """Run a review and persist findings and final status."""
+    """Run a review and persist findings, consolidated report, and final status."""
     db = SessionLocal()
 
     try:
@@ -38,6 +39,9 @@ def process_review_job(job_id: str) -> None:
             commit_sha=job.commit_sha,
             job_id=job.id,
         )
+
+        # Clear any existing findings for this job in case of reprocessing
+        db.query(ReviewFinding).filter(ReviewFinding.job_id == job.id).delete()
 
         for finding in findings:
             db.add(
@@ -69,9 +73,34 @@ def process_review_job(job_id: str) -> None:
             job.status = JobStatus.COMPLETED.value
             job.error_message = None
 
+        # Build and persist the consolidated review report
+        report = build_review_report(
+            job_id=job.id,
+            repository_url=job.repository,
+            commit_sha=job.commit_sha,
+            status=job.status,
+            findings=findings,
+            agent_failures=review_service.agent_failures,
+            error_message=job.error_message,
+        )
+
+        existing_report = (
+            db.query(ReviewReport).filter(ReviewReport.job_id == job.id).first()
+        )
+        if existing_report is not None:
+            existing_report.report_data = report.model_dump()
+        else:
+            db.add(
+                ReviewReport(
+                    id=str(uuid4()),
+                    job_id=job.id,
+                    report_data=report.model_dump(),
+                )
+            )
+
         db.commit()
 
-    except Exception as exc:   # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
 
         job = db.get(ReviewJob, job_id)
@@ -82,6 +111,7 @@ def process_review_job(job_id: str) -> None:
 
     finally:
         db.close()
+
 
 @router.post("/", response_model=ReviewJobResponse, status_code=202)
 def create_review_job(
@@ -113,7 +143,6 @@ def get_review_job(job_id: str, db: Session = Depends(get_db)):
     return job
 
 
-
 @router.get(
     "/{job_id}/findings",
     response_model=list[ReviewFindingResponse],
@@ -126,7 +155,6 @@ def get_review_findings(
     if job is None:
         raise HTTPException(status_code=404, detail="Review job not found")
 
-    
     findings = (
         db.query(ReviewFinding)
         .filter(ReviewFinding.job_id == job_id)
@@ -150,4 +178,35 @@ def get_review_findings(
             finding.line or 0,
         ),
     )
+
+
+@router.get(
+    "/{job_id}/report",
+    response_model=ReviewReportResponse,
+)
+def get_review_report(
+    job_id: str,
+    db: Session = Depends(get_db),
+):
+    job = db.get(ReviewJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Review job not found")
+
+    if job.status in (JobStatus.QUEUED.value, JobStatus.RUNNING.value):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Review job is currently '{job.status}'. Report is not yet available.",
+        )
+
+    report_record = (
+        db.query(ReviewReport).filter(ReviewReport.job_id == job_id).first()
+    )
+    if report_record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found for this review job",
+        )
+
+    return ReviewReportResponse.model_validate(report_record.report_data)
+
 

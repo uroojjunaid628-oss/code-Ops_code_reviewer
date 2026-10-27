@@ -11,6 +11,7 @@ from reviewer.schemas.findings import Finding
 from reviewer.services.analyzer import StaticAnalyzer
 from reviewer.services.deduplicator import FindingDeduplicator
 from reviewer.services.repository import RepositoryService
+from reviewer.services.tools import reset_active_workspace, set_active_workspace
 from reviewer.services.verifier import FindingVerifier
 
 logger = logging.getLogger(__name__)
@@ -70,20 +71,14 @@ class ReviewService:
             job_id=job_id,
         )
 
+        token = set_active_workspace(workspace)
         try:
-            static_findings = self.analyzer.analyze(workspace)
             agent_findings = self._analyze_with_agents(workspace)
-
-            enriched_static = self._attach_agent_recommendations(
-                static_findings,
-                agent_findings,
-            )
-
-            candidates = enriched_static + agent_findings
-            verified_findings = self.verifier.verify(candidates, workspace)
+            verified_findings = self.verifier.verify(agent_findings, workspace)
 
             return self.deduplicator.deduplicate(verified_findings)
         finally:
+            reset_active_workspace(token)
             if cleanup:
                 self.repository_service.cleanup_workspace(workspace)
 
