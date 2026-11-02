@@ -1,3 +1,4 @@
+
 import json
 from pathlib import Path
 from unittest.mock import Mock
@@ -45,16 +46,13 @@ def test_review_continues_when_one_agent_fails(tmp_path: Path) -> None:
 
 def test_review_repository_filters_unverified_findings(tmp_path: Path) -> None:
     service = ReviewService()
-    service.analyzer.analyze = Mock(return_value=[])
 
     source_file = tmp_path / "app.py"
     source_file.write_text("x = 1\ny = 2\n", encoding="utf-8")
 
-    # Mock prepare_repository to return tmp_path without real git clone
     service.repository_service.prepare_repository = Mock(return_value=tmp_path)
     service.repository_service.cleanup_workspace = Mock()
 
-    # Agents return 2 valid findings on real lines and 1 hallucinated finding on fake line 999
     valid_finding_1 = Finding(
         source="ai_agent",
         category="quality",
@@ -89,7 +87,11 @@ def test_review_repository_filters_unverified_findings(tmp_path: Path) -> None:
     )
 
     agent = Mock()
-    agent.analyze.return_value = [valid_finding_1, valid_finding_2, hallucinated_finding]
+    agent.analyze.return_value = [
+        valid_finding_1,
+        valid_finding_2,
+        hallucinated_finding,
+    ]
     service.agents = [agent]
 
     results = service.review_repository(
@@ -99,20 +101,21 @@ def test_review_repository_filters_unverified_findings(tmp_path: Path) -> None:
         cleanup=True,
     )
 
-    # Should retain the 2 valid agent findings, but drop the hallucinated one
     assert len(results) == 2
-    rule_ids = {f.rule_id for f in results}
+    rule_ids = {finding.rule_id for finding in results}
     assert "E501" in rule_ids
     assert "BUG001" in rule_ids
     assert "BUG002" not in rule_ids
 
-    # Cleanup must be called
-    service.repository_service.cleanup_workspace.assert_called_once_with(tmp_path)
+    service.repository_service.cleanup_workspace.assert_called_once_with(
+        tmp_path
+    )
 
 
-def test_review_repository_deduplicates_verified_findings(tmp_path: Path) -> None:
+def test_review_repository_deduplicates_verified_findings(
+    tmp_path: Path,
+) -> None:
     service = ReviewService()
-    service.analyzer.analyze = Mock(return_value=[])
 
     source_file = tmp_path / "main.py"
     source_file.write_text("import sys\nx = 10\n", encoding="utf-8")
@@ -120,7 +123,6 @@ def test_review_repository_deduplicates_verified_findings(tmp_path: Path) -> Non
     service.repository_service.prepare_repository = Mock(return_value=tmp_path)
     service.repository_service.cleanup_workspace = Mock()
 
-    # AI agents return findings (including duplicate F401 on line 1, and distinct findings on line 2)
     ai_f401_initial = Finding(
         source="ai_agent",
         category="quality",
@@ -182,11 +184,9 @@ def test_review_repository_deduplicates_verified_findings(tmp_path: Path) -> Non
         cleanup=True,
     )
 
-    # Duplicate F401 on line 1 should merge into one finding
-    # Distinct line 2 findings (B608 and QUAL001) must both survive
     assert len(results) == 3
 
-    rule_map = {f.rule_id: f for f in results}
+    rule_map = {finding.rule_id: finding for finding in results}
     assert set(rule_map.keys()) == {"F401", "B608", "QUAL001"}
 
     merged_f401 = rule_map["F401"]
@@ -198,9 +198,10 @@ def test_review_repository_deduplicates_verified_findings(tmp_path: Path) -> Non
     assert rule_map["QUAL001"].category == "quality"
 
 
-
-def test_review_service_invokes_baseline_analyzer(tmp_path: Path) -> None:
-    """Verify ReviewService automatically invokes the StaticAnalyzer."""
+def test_review_repository_uses_agents_without_baseline_analyzer(
+    tmp_path: Path,
+) -> None:
+    """Verify that review uses agents and does not require StaticAnalyzer."""
     service = ReviewService()
 
     source_file = tmp_path / "module.py"
@@ -208,7 +209,6 @@ def test_review_service_invokes_baseline_analyzer(tmp_path: Path) -> None:
 
     service.repository_service.prepare_repository = Mock(return_value=tmp_path)
     service.repository_service.cleanup_workspace = Mock()
-    service.analyzer.analyze = Mock(return_value=[])
 
     agent = Mock()
     agent.analyze.return_value = []
@@ -220,54 +220,62 @@ def test_review_service_invokes_baseline_analyzer(tmp_path: Path) -> None:
         job_id="test-job-789",
     )
 
-    # Static analysis must run on the prepared repository.
-    service.analyzer.analyze.assert_called_once_with(tmp_path)
+    assert not hasattr(service, "analyzer")
+    agent.analyze.assert_called_once()
 
-    # Cleanup must still happen after the review.
-    service.repository_service.cleanup_workspace.assert_called_once_with(tmp_path)
+    service.repository_service.cleanup_workspace.assert_called_once_with(
+        tmp_path
+    )
 
 
-def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(monkeypatch, tmp_path: Path) -> None:
-    """Demonstrate end-to-end that an agent requests its tool, receives results, and incorporates them."""
-    # Create an agent instance
+def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Verify that an agent requests a tool and uses its returned result."""
     agent = BugAnalysisAgent()
 
-    # Mock the LLM to verify multi-turn tool calling
     mock_llm = Mock()
 
-    # Round 1: Agent decides to invoke inspect_source tool
     tool_call_response = AIMessage(
         content="",
         tool_calls=[
             {
                 "name": "inspect_source",
-                "args": {"file_path": "sample.py", "source_code": "import math\nprint(math.pi)"},
+                "args": {
+                    "file_path": "sample.py",
+                    "source_code": "import math\nprint(math.pi)",
+                },
                 "id": "call_inspect_123",
             }
         ],
     )
 
-    # Round 2: After receiving inspect_source output, LLM generates final structured output
     final_analysis_response = AIMessage(
-        content=json.dumps({
-            "findings": [
-                {
-                    "source": "ai_agent",
-                    "category": "bug",
-                    "rule_id": "BUG_AFTER_TOOL",
-                    "severity": "medium",
-                    "confidence": "high",
-                    "message": "Potential bug identified using tool inspection",
-                    "file_path": "sample.py",
-                    "line": 1,
-                    "evidence": "import math",
-                    "recommendation": "Check math usage",
-                }
-            ]
-        })
+        content=json.dumps(
+            {
+                "findings": [
+                    {
+                        "source": "ai_agent",
+                        "category": "bug",
+                        "rule_id": "BUG_AFTER_TOOL",
+                        "severity": "medium",
+                        "confidence": "high",
+                        "message": "Potential bug identified using tool inspection",
+                        "file_path": "sample.py",
+                        "line": 1,
+                        "evidence": "import math",
+                        "recommendation": "Check math usage",
+                    }
+                ]
+            }
+        )
     )
 
-    mock_llm.invoke.side_effect = [tool_call_response, final_analysis_response]
+    mock_llm.invoke.side_effect = [
+        tool_call_response,
+        final_analysis_response,
+    ]
     agent.llm = mock_llm
 
     findings = agent.analyze(
@@ -275,28 +283,32 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(monkeypatch, tm
         file_path="sample.py",
     )
 
-    # 1. LLM was invoked twice (turn 1: tool call request, turn 2: final answer after tool output)
     assert mock_llm.invoke.call_count == 2
 
-    # 2. In turn 2, the message list sent to the LLM must contain ToolMessage with the tool execution result
     second_call_messages = mock_llm.invoke.call_args_list[1][0][0]
-    tool_messages = [m for m in second_call_messages if getattr(m, "tool_call_id", None) == "call_inspect_123"]
+    tool_messages = [
+        message
+        for message in second_call_messages
+        if getattr(message, "tool_call_id", None) == "call_inspect_123"
+    ]
+
     assert len(tool_messages) == 1
+
     tool_payload = json.loads(tool_messages[0].content)
     assert tool_payload["file_path"] == "sample.py"
     assert tool_payload["import_count"] == 1
 
-    # 3. Final findings were constructed successfully using the agent's analysis
     assert len(findings) == 1
     assert findings[0].rule_id == "BUG_AFTER_TOOL"
     assert findings[0].category == "bug"
     assert findings[0].source == "ai_agent"
 
 
-def test_agent_and_tool_failures_record_agent_failures_without_false_success(tmp_path: Path) -> None:
-    """Verify that agent or tool failures increment agent_failures and do not report false success."""
+def test_agent_and_tool_failures_record_agent_failures_without_false_success(
+    tmp_path: Path,
+) -> None:
+    """Verify that agent failures are recorded without reporting false success."""
     service = ReviewService()
-    service.analyzer.analyze = Mock(return_value=[])
 
     source_file = tmp_path / "broken.py"
     source_file.write_text("x = 10", encoding="utf-8")
@@ -304,9 +316,10 @@ def test_agent_and_tool_failures_record_agent_failures_without_false_success(tmp
     service.repository_service.prepare_repository = Mock(return_value=tmp_path)
     service.repository_service.cleanup_workspace = Mock()
 
-    # Agent encounters a failure (e.g., tool execution failed or LLM API error)
     failing_agent = Mock()
-    failing_agent.analyze.side_effect = RuntimeError("Tool execution error inside agent")
+    failing_agent.analyze.side_effect = RuntimeError(
+        "Tool execution error inside agent"
+    )
 
     working_agent = Mock()
     working_agent.analyze.return_value = []
@@ -319,6 +332,9 @@ def test_agent_and_tool_failures_record_agent_failures_without_false_success(tmp
         job_id="test-job-fail",
     )
 
-    # Findings returned are empty, but agent_failures is recorded
     assert findings == []
     assert service.agent_failures == 1
+
+    service.repository_service.cleanup_workspace.assert_called_once_with(
+        tmp_path
+    )

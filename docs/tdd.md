@@ -1,9 +1,5 @@
 # CodeOPS-AI — Test-Driven Development Document
 
-> **Status:** Reflects the test suite as of 2026-11-02. All 45 tests pass. Written from direct inspection of source files and a confirmed test run (`python -m pytest tests/ -v --tb=short` → 45 passed in 22.62s).
-
----
-
 ## Table of Contents
 
 1. [Test Infrastructure](#1-test-infrastructure)

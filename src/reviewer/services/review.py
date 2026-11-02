@@ -8,7 +8,6 @@ from reviewer.agents.quality_agent import CodeQualityAgent
 from reviewer.agents.security_agent import SecurityAnalysisAgent
 from reviewer.agents.test_agent import TestAnalysisAgent
 from reviewer.schemas.findings import Finding
-from reviewer.services.analyzer import StaticAnalyzer
 from reviewer.services.deduplicator import FindingDeduplicator
 from reviewer.services.repository import RepositoryService
 from reviewer.services.tools import reset_active_workspace, set_active_workspace
@@ -28,7 +27,7 @@ class SourceCodeAgent(Protocol):
 
 
 class ReviewService:
-    """Coordinate static analysis, AI analysis, verification, and deduplication."""
+    """Coordinate AI agent analysis, verification, and deduplication."""
 
     EXCLUDED_DIRECTORIES: ClassVar[set[str]] = {
         ".git",
@@ -46,7 +45,6 @@ class ReviewService:
 
     def __init__(self) -> None:
         self.repository_service = RepositoryService()
-        self.analyzer = StaticAnalyzer()
         self.verifier = FindingVerifier()
         self.deduplicator = FindingDeduplicator()
         self.agent_failures = 0
@@ -65,7 +63,7 @@ class ReviewService:
         job_id: str,
         cleanup: bool = True,
     ) -> list[Finding]:
-        """Collect static and AI findings, then verify and deduplicate them."""
+        """Collect agent findings, then verify and deduplicate them."""
         self.agent_failures = 0
 
         workspace = self.repository_service.prepare_repository(
@@ -77,24 +75,10 @@ class ReviewService:
         token = set_active_workspace(workspace)
 
         try:
-            # Deterministic analysis runs independently of AI agent decisions.
-            try:
-                static_findings = self.analyzer.analyze(workspace)
-            except Exception:
-                self.agent_failures += 1
-                logger.exception(
-                    "Static analysis failed for review job %s",
-                    job_id,
-                )
-                static_findings = []
-
-            # AI analysis continues even if static analysis fails.
             agent_findings = self._analyze_with_agents(workspace)
 
-            # Verify both sources through the same evidence-validation pipeline.
-            candidate_findings = static_findings + agent_findings
             verified_findings = self.verifier.verify(
-                candidate_findings,
+                agent_findings,
                 workspace,
             )
 
@@ -105,42 +89,6 @@ class ReviewService:
 
             if cleanup:
                 self.repository_service.cleanup_workspace(workspace)
-
-    @staticmethod
-    def _attach_agent_recommendations(
-        static_findings: list[Finding],
-        agent_findings: list[Finding],
-    ) -> list[Finding]:
-        """Attach nearby, category-matched AI recommendations to static findings."""
-        enriched: list[Finding] = []
-
-        for finding in static_findings:
-            if finding.recommendation or finding.line is None:
-                enriched.append(finding)
-                continue
-
-            matching_recommendations = [
-                item
-                for item in agent_findings
-                if item.file_path == finding.file_path
-                and item.category == finding.category
-                and item.recommendation
-                and item.line is not None
-                and abs(item.line - finding.line) <= 3
-            ]
-
-            if matching_recommendations:
-                best_match = min(
-                    matching_recommendations,
-                    key=lambda item: abs(item.line - finding.line),
-                )
-                finding = finding.model_copy(
-                    update={"recommendation": best_match.recommendation}
-                )
-
-            enriched.append(finding)
-
-        return enriched
 
     def _collect_python_files(self, workspace: Path) -> list[Path]:
         """Collect a deterministic, bounded set of eligible Python files."""
