@@ -1,5 +1,4 @@
 
-from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,9 +10,8 @@ class Settings(BaseSettings):
 
     database_url: str
 
-    groq_api_key: SecretStr
-    llm_provider: str = "groq"
-    llm_model: str = "openai/gpt-oss-120b"
+    ollama_base_url: str = "http://localhost:11434"
+    llm_model: str = "qwen2.5:3b"
 
     model_config = SettingsConfigDict(
         env_file=".env",

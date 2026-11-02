@@ -28,7 +28,7 @@ class SourceCodeAgent(Protocol):
 
 
 class ReviewService:
-    """Coordinate repository preparation, analysis, and verification."""
+    """Coordinate static analysis, AI analysis, verification, and deduplication."""
 
     EXCLUDED_DIRECTORIES: ClassVar[set[str]] = {
         ".git",
@@ -36,6 +36,9 @@ class ReviewService:
         "venv",
         "__pycache__",
         "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
     }
 
     MAX_FILES: ClassVar[int] = 3
@@ -62,7 +65,7 @@ class ReviewService:
         job_id: str,
         cleanup: bool = True,
     ) -> list[Finding]:
-        """Analyze a repository and return verified, deduplicated findings."""
+        """Collect static and AI findings, then verify and deduplicate them."""
         self.agent_failures = 0
 
         workspace = self.repository_service.prepare_repository(
@@ -72,13 +75,34 @@ class ReviewService:
         )
 
         token = set_active_workspace(workspace)
+
         try:
+            # Deterministic analysis runs independently of AI agent decisions.
+            try:
+                static_findings = self.analyzer.analyze(workspace)
+            except Exception:
+                self.agent_failures += 1
+                logger.exception(
+                    "Static analysis failed for review job %s",
+                    job_id,
+                )
+                static_findings = []
+
+            # AI analysis continues even if static analysis fails.
             agent_findings = self._analyze_with_agents(workspace)
-            verified_findings = self.verifier.verify(agent_findings, workspace)
+
+            # Verify both sources through the same evidence-validation pipeline.
+            candidate_findings = static_findings + agent_findings
+            verified_findings = self.verifier.verify(
+                candidate_findings,
+                workspace,
+            )
 
             return self.deduplicator.deduplicate(verified_findings)
+
         finally:
             reset_active_workspace(token)
+
             if cleanup:
                 self.repository_service.cleanup_workspace(workspace)
 
@@ -91,22 +115,18 @@ class ReviewService:
         enriched: list[Finding] = []
 
         for finding in static_findings:
-            if finding.recommendation:
-                enriched.append(finding)
-                continue
-
-            if finding.line is None:
+            if finding.recommendation or finding.line is None:
                 enriched.append(finding)
                 continue
 
             matching_recommendations = [
-                agent_finding
-                for agent_finding in agent_findings
-                if agent_finding.file_path == finding.file_path
-                and agent_finding.category == finding.category
-                and agent_finding.recommendation
-                and agent_finding.line is not None
-                and abs(agent_finding.line - finding.line) <= 3
+                item
+                for item in agent_findings
+                if item.file_path == finding.file_path
+                and item.category == finding.category
+                and item.recommendation
+                and item.line is not None
+                and abs(item.line - finding.line) <= 3
             ]
 
             if matching_recommendations:
@@ -115,17 +135,15 @@ class ReviewService:
                     key=lambda item: abs(item.line - finding.line),
                 )
                 finding = finding.model_copy(
-                    update={
-                        "recommendation": best_match.recommendation,
-                    }
+                    update={"recommendation": best_match.recommendation}
                 )
 
             enriched.append(finding)
 
         return enriched
 
-    def _analyze_with_agents(self, workspace: Path) -> list[Finding]:
-        """Run AI agents while isolating file and agent failures."""
+    def _collect_python_files(self, workspace: Path) -> list[Path]:
+        """Collect a deterministic, bounded set of eligible Python files."""
         python_files: list[Path] = []
 
         try:
@@ -149,7 +167,7 @@ class ReviewService:
                     if len(python_files) >= self.MAX_FILES:
                         break
 
-                except OSError:
+                except (OSError, ValueError):
                     self.agent_failures += 1
                     logger.warning(
                         "Could not inspect source file: %s",
@@ -163,35 +181,33 @@ class ReviewService:
                 "Could not enumerate Python files in workspace: %s",
                 workspace,
             )
-            return []
 
+        return python_files
+
+    def _analyze_with_agents(self, workspace: Path) -> list[Finding]:
+        """Run AI agents while isolating individual file and agent failures."""
         findings: list[Finding] = []
 
-        for file_path in python_files:
-            relative_path = file_path.relative_to(workspace).as_posix()
-
+        for file_path in self._collect_python_files(workspace):
             try:
+                relative_path = file_path.relative_to(workspace).as_posix()
                 source_code = file_path.read_text(
                     encoding="utf-8",
                     errors="replace",
                 )
-            except OSError:
+            except (OSError, ValueError):
                 self.agent_failures += 1
-                logger.exception(
-                    "Could not read source file: %s",
-                    relative_path,
-                )
+                logger.exception("Could not read source file: %s", file_path)
                 continue
 
             for agent in self.agents:
                 try:
-                    agent_findings = agent.analyze(
-                        source_code=source_code,
-                        file_path=relative_path,
+                    findings.extend(
+                        agent.analyze(
+                            source_code=source_code,
+                            file_path=relative_path,
+                        )
                     )
-
-                    findings.extend(agent_findings)
-
                 except Exception:
                     self.agent_failures += 1
                     logger.exception(

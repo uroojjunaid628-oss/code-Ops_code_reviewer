@@ -45,6 +45,7 @@ def test_review_continues_when_one_agent_fails(tmp_path: Path) -> None:
 
 def test_review_repository_filters_unverified_findings(tmp_path: Path) -> None:
     service = ReviewService()
+    service.analyzer.analyze = Mock(return_value=[])
 
     source_file = tmp_path / "app.py"
     source_file.write_text("x = 1\ny = 2\n", encoding="utf-8")
@@ -111,6 +112,7 @@ def test_review_repository_filters_unverified_findings(tmp_path: Path) -> None:
 
 def test_review_repository_deduplicates_verified_findings(tmp_path: Path) -> None:
     service = ReviewService()
+    service.analyzer.analyze = Mock(return_value=[])
 
     source_file = tmp_path / "main.py"
     source_file.write_text("import sys\nx = 10\n", encoding="utf-8")
@@ -196,8 +198,9 @@ def test_review_repository_deduplicates_verified_findings(tmp_path: Path) -> Non
     assert rule_map["QUAL001"].category == "quality"
 
 
-def test_review_service_does_not_invoke_baseline_analyzer(tmp_path: Path) -> None:
-    """Verify ReviewService does NOT automatically invoke the baseline StaticAnalyzer."""
+
+def test_review_service_invokes_baseline_analyzer(tmp_path: Path) -> None:
+    """Verify ReviewService automatically invokes the StaticAnalyzer."""
     service = ReviewService()
 
     source_file = tmp_path / "module.py"
@@ -205,7 +208,7 @@ def test_review_service_does_not_invoke_baseline_analyzer(tmp_path: Path) -> Non
 
     service.repository_service.prepare_repository = Mock(return_value=tmp_path)
     service.repository_service.cleanup_workspace = Mock()
-    service.analyzer.analyze = Mock()
+    service.analyzer.analyze = Mock(return_value=[])
 
     agent = Mock()
     agent.analyze.return_value = []
@@ -217,8 +220,11 @@ def test_review_service_does_not_invoke_baseline_analyzer(tmp_path: Path) -> Non
         job_id="test-job-789",
     )
 
-    # Crucial assertion: analyzer.analyze must NOT be called automatically
-    service.analyzer.analyze.assert_not_called()
+    # Static analysis must run on the prepared repository.
+    service.analyzer.analyze.assert_called_once_with(tmp_path)
+
+    # Cleanup must still happen after the review.
+    service.repository_service.cleanup_workspace.assert_called_once_with(tmp_path)
 
 
 def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(monkeypatch, tmp_path: Path) -> None:
@@ -290,6 +296,7 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(monkeypatch, tm
 def test_agent_and_tool_failures_record_agent_failures_without_false_success(tmp_path: Path) -> None:
     """Verify that agent or tool failures increment agent_failures and do not report false success."""
     service = ReviewService()
+    service.analyzer.analyze = Mock(return_value=[])
 
     source_file = tmp_path / "broken.py"
     source_file.write_text("x = 10", encoding="utf-8")

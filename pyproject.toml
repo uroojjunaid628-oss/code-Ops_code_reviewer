@@ -19,8 +19,7 @@ dependencies = [
     "ruff",
     "bandit",
     "GitPython",
-    "groq",
-    "langchain-groq",
+    "langchain-ollama",
     "langchain-core",
 ]
 

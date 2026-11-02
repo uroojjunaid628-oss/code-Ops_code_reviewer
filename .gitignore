@@ -24,3 +24,5 @@ build/
 # Local Databases
 *.db
 *.sqlite3
+
+review-debug.log
