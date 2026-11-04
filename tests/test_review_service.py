@@ -1,4 +1,3 @@
-
 import json
 from pathlib import Path
 from unittest.mock import Mock
@@ -232,7 +231,7 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    """Verify that an agent requests a tool and uses its returned result."""
+    """Verify that the Bug Agent invokes Ruff and uses its result."""
     agent = BugAnalysisAgent()
 
     mock_llm = Mock()
@@ -241,12 +240,9 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(
         content="",
         tool_calls=[
             {
-                "name": "inspect_source",
-                "args": {
-                    "file_path": "sample.py",
-                    "source_code": "import math\nprint(math.pi)",
-                },
-                "id": "call_inspect_123",
+                "name": "run_ruff",
+                "args": {},
+                "id": "call_ruff_123",
             }
         ],
     )
@@ -261,11 +257,11 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(
                         "rule_id": "BUG_AFTER_TOOL",
                         "severity": "medium",
                         "confidence": "high",
-                        "message": "Potential bug identified using tool inspection",
+                        "message": "Potential bug identified using Ruff results",
                         "file_path": "sample.py",
                         "line": 1,
                         "evidence": "import math",
-                        "recommendation": "Check math usage",
+                        "recommendation": "Review the reported issue.",
                     }
                 ]
             }
@@ -278,6 +274,25 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(
     ]
     agent.llm = mock_llm
 
+    ruff_findings = [
+        Finding(
+            source="ruff",
+            category="quality",
+            rule_id="F401",
+            severity="medium",
+            confidence="high",
+            message="`math` imported but unused",
+            file_path="sample.py",
+            line=1,
+            evidence="import math",
+        )
+    ]
+
+    monkeypatch.setattr(
+        "reviewer.services.tools._run_ruff",
+        Mock(return_value=ruff_findings),
+    )
+
     findings = agent.analyze(
         source_code="import math\nprint(math.pi)",
         file_path="sample.py",
@@ -286,17 +301,20 @@ def test_agent_invokes_assigned_tool_and_uses_result_in_analysis(
     assert mock_llm.invoke.call_count == 2
 
     second_call_messages = mock_llm.invoke.call_args_list[1][0][0]
+
     tool_messages = [
         message
         for message in second_call_messages
-        if getattr(message, "tool_call_id", None) == "call_inspect_123"
+        if getattr(message, "tool_call_id", None) == "call_ruff_123"
     ]
 
     assert len(tool_messages) == 1
 
     tool_payload = json.loads(tool_messages[0].content)
-    assert tool_payload["file_path"] == "sample.py"
-    assert tool_payload["import_count"] == 1
+
+    assert len(tool_payload) == 1
+    assert tool_payload[0]["file_path"] == "sample.py"
+    assert tool_payload[0]["rule_id"] == "F401"
 
     assert len(findings) == 1
     assert findings[0].rule_id == "BUG_AFTER_TOOL"

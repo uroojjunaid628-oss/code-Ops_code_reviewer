@@ -40,7 +40,7 @@ class ReviewService:
         ".ruff_cache",
     }
 
-    MAX_FILES: ClassVar[int] = 3
+    MAX_FILES: ClassVar[int] = 5
     MAX_FILE_SIZE: ClassVar[int] = 10_000
 
     def __init__(self) -> None:

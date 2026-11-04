@@ -1,72 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CodeOPS-AI Review</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-  </head>
-  <body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeOPS-AI | Code Review</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
     <main class="page">
-      <header class="hero">
-        <p class="eyebrow">CodeOPS-AI</p>
-        <h1>Code review</h1>
-        <p class="lede">
-          Submit a GitHub repository and commit SHA. The review runs on the
-          existing backend and the findings below come from that job.
-        </p>
-      </header>
 
-      <form id="review-form" class="card" novalidate>
-        <label for="repository">Repository URL</label>
-        <input
-          id="repository"
-          name="repository"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="https://github.com/owner/repo"
-        />
+        <!-- Application Header -->
+        <header class="hero">
+            <div class="brand">
+                <span class="brand-label">CodeOPS-AI</span>
+                <h1>Intelligent Code Review</h1>
+                <p>
+                    Analyze your Python repository and identify
+                    potential bugs, security risks, and code-quality issues.
+                </p>
+            </div>
+        </header>
 
-        <label for="commit-sha">Commit SHA</label>
-        <input
-          id="commit-sha"
-          name="commit_sha"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="40-character hexadecimal commit hash"
-        />
+        <!-- Repository Submission -->
+        <section class="card submission-card">
+            <div class="section-heading">
+                <h2>Start a Code Review</h2>
+                <p>Provide a public GitHub repository to begin analysis.</p>
+            </div>
 
-        <button id="submit-button" type="submit">Review Code</button>
-        <p id="form-error" class="error" hidden></p>
-      </form>
+            <form id="review-form">
+                <div class="form-group">
+                    <label for="repository-url">GitHub Repository URL</label>
+                    <input
+                        type="url"
+                        id="repository-url"
+                        name="repository_url"
+                        placeholder="https://github.com/username/repository"
+                        required
+                    >
+                </div>
 
-      <section id="status-panel" class="card" hidden>
-        <h2>Review status</h2>
-        <p><span class="label">Job ID</span> <code id="job-id"></code></p>
-        <p>
-          <span class="label">Status</span>
-          <span id="job-status" class="status-badge"></span>
-        </p>
-        <p id="loading-message" class="loading" hidden>
-          Review in progress. This page checks job status until the run
-          finishes.
-        </p>
-        <p id="job-error" class="error" hidden></p>
-      </section>
+                <div class="form-group">
+    <label for="commit-sha">Commit SHA</label>
+    <input
+        type="text"
+        id="commit-sha"
+        name="commit_sha"
+        placeholder="Enter the 40-character commit SHA"
+        required
+    >
+</div>
 
-      <section id="report-panel" class="card" hidden>
-        <div class="report-header">
-          <h2>Findings</h2>
-          <p id="findings-count" class="count"></p>
-        </div>
-        <p id="empty-findings" class="empty" hidden>
-          The review finished and returned no findings.
-        </p>
-        <div id="findings-list"></div>
-      </section>
+                <button type="submit" id="submit-button">
+                    Start Review
+                </button>
+            </form>
+        </section>
+
+        <!-- Review Job Status -->
+        <section class="card status-card" id="status-panel" hidden>
+            <div class="section-heading">
+                <h2>Review Status</h2>
+                <p>Track the progress of your repository analysis.</p>
+            </div>
+
+            <div class="status-details">
+                <div class="status-item">
+                    <span class="meta-label">Job ID</span>
+                    <span id="job-id">—</span>
+                </div>
+
+                <div class="status-item">
+                    <span class="meta-label">Status</span>
+                    <span id="job-status" class="status-badge">Queued</span>
+                </div>
+            </div>
+
+            <p id="loading-message" class="loading-message" hidden>
+                Your repository is being analyzed. Please wait...
+            </p>
+
+            <p id="job-error" class="error-message" hidden></p>
+        </section>
+
+        <!-- Complete Review Report -->
+        <section class="report" id="report-panel" hidden>
+
+            <!-- Report Header -->
+            <section class="card report-header">
+                <div>
+                    <span class="eyebrow">CODE REVIEW REPORT</span>
+                    <h2>Review Results</h2>
+                </div>
+
+                <div class="report-meta">
+                    <div>
+                        <span class="meta-label">Repository</span>
+                        <span id="report-repository">—</span>
+                    </div>
+
+                    <div>
+                        <span class="meta-label">Commit</span>
+                        <span id="report-commit">—</span>
+                    </div>
+
+                    <div>
+                        <span class="meta-label">Review Status</span>
+                        <span id="report-status">—</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Executive Summary -->
+            <section class="card">
+                <div class="section-heading">
+                    <span class="eyebrow">OVERVIEW</span>
+                    <h2>Executive Summary</h2>
+                </div>
+
+                <p id="executive-summary" class="summary-text"></p>
+
+                <div id="key-observations-section" hidden>
+                    <h3>Key Observations</h3>
+                    <ul id="key-observations"></ul>
+                </div>
+            </section>
+
+            <!-- Findings Summary -->
+            <section class="card">
+                <div class="section-heading">
+                    <span class="eyebrow">ANALYSIS</span>
+                    <h2>Findings Overview</h2>
+                    <p>A breakdown of the issues identified during review.</p>
+                </div>
+
+                <div class="total-findings">
+                    <span class="meta-label">Total Findings</span>
+                    <strong id="findings-count">0</strong>
+                </div>
+
+                <div class="breakdown-grid">
+
+                    <div class="breakdown-section">
+                        <h3>Severity Breakdown</h3>
+                        <div id="severity-breakdown" class="breakdown-list"></div>
+                    </div>
+
+                    <div class="breakdown-section">
+                        <h3>Category Breakdown</h3>
+                        <div id="category-breakdown" class="breakdown-list"></div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Detailed Findings -->
+            <section class="card">
+                <div class="section-heading">
+                    <span class="eyebrow">ISSUES</span>
+                    <h2>Detailed Findings</h2>
+                    <p>
+                        Review each finding, its supporting evidence,
+                        explanation, and recommended correction.
+                    </p>
+                </div>
+
+                <div id="empty-findings" class="empty-state" hidden>
+                    No findings were reported for this review.
+                </div>
+
+                <div id="findings-list" class="findings-list"></div>
+            </section>
+
+            <!-- Recommended Actions -->
+            <section class="card">
+                <div class="section-heading">
+                    <span class="eyebrow">NEXT STEPS</span>
+                    <h2>Prioritized Action Plan</h2>
+                    <p>
+                        Recommended improvements ordered by priority.
+                    </p>
+                </div>
+
+                <div id="actions-list" class="actions-list"></div>
+            </section>
+
+            <!-- Analysis Limitations -->
+            <section class="card">
+                <div class="section-heading">
+                    <span class="eyebrow">TRANSPARENCY</span>
+                    <h2>Analysis Status & Limitations</h2>
+                </div>
+
+                <div class="analysis-status">
+                    <div>
+                        <span class="meta-label">Completion Status</span>
+                        <span id="completion-status">—</span>
+                    </div>
+
+                    <div>
+                        <span class="meta-label">Partial Review</span>
+                        <span id="partial-review">—</span>
+                    </div>
+                </div>
+
+                <div id="agent-failures-section" hidden>
+                    <h3>Agent Failures</h3>
+                    <ul id="agent-failures"></ul>
+                </div>
+
+                <div id="limitations-section" hidden>
+                    <h3>Known Limitations</h3>
+                    <ul id="limitations-list"></ul>
+                </div>
+            </section>
+
+        </section>
+
+        <footer class="footer">
+            <p>CodeOPS-AI · Automated Code Review System</p>
+        </footer>
+
     </main>
+
     <script src="/static/app.js"></script>
-  </body>
+</body>
 </html>

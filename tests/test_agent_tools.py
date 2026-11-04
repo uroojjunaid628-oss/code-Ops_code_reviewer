@@ -147,3 +147,65 @@ def test_execute_agent_tool_calling_loop() -> None:
     tool_data = json.loads(tool_messages[0].content)
     assert tool_data["file_path"] == "test.py"
     assert tool_data["import_count"] == 1
+
+
+def test_tools_run_without_workspace_arguments(tmp_path: Path, monkeypatch) -> None:
+    """Verify that run_ruff, run_bandit, and existing_test_inspection take no arguments."""
+    from reviewer.agents.security_agent import SecurityAnalysisAgent
+    from reviewer.schemas.findings import Finding
+
+    token = set_active_workspace(tmp_path)
+    try:
+        # Create a test file
+        test_file = tmp_path / "test_sample.py"
+        test_file.write_text("def test_ok(): pass\n", encoding="utf-8")
+
+        # Verify existing_test_inspection without args
+        results = existing_test_inspection.invoke({})
+        assert len(results) == 1
+        assert results[0]["file_path"] == "test_sample.py"
+
+        # Verify run_ruff without args uses active workspace
+        mock_ruff = Mock(return_value=[
+            Finding(
+                source="ruff",
+                category="quality",
+                rule_id="E501",
+                severity="low",
+                confidence="high",
+                message="Line too long",
+                file_path="test_sample.py",
+                line=1,
+            )
+        ])
+        monkeypatch.setattr("reviewer.services.tools._run_ruff", mock_ruff)
+        ruff_findings = run_ruff.invoke({})
+        assert len(ruff_findings) == 1
+        assert ruff_findings[0]["rule_id"] == "E501"
+        mock_ruff.assert_called_once_with(tmp_path)
+
+        # Verify run_bandit without args uses active workspace
+        mock_bandit = Mock(return_value=[
+            Finding(
+                source="bandit",
+                category="security",
+                rule_id="B101",
+                severity="low",
+                confidence="high",
+                message="Assert used",
+                file_path="test_sample.py",
+                line=1,
+            )
+        ])
+        monkeypatch.setattr("reviewer.services.tools._run_bandit", mock_bandit)
+        bandit_findings = run_bandit.invoke({})
+        assert len(bandit_findings) == 1
+        assert bandit_findings[0]["rule_id"] == "B101"
+        mock_bandit.assert_called_once_with(tmp_path)
+
+        # Verify SecurityAnalysisAgent directly binds run_bandit
+        security_agent = SecurityAnalysisAgent()
+        assert "run_bandit" in security_agent.allowed_tools
+        assert security_agent.allowed_tools["run_bandit"] is run_bandit
+    finally:
+        reset_active_workspace(token)

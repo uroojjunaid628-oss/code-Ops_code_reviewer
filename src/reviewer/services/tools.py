@@ -351,25 +351,17 @@ def _run_bandit(workspace: Path) -> list[Finding]:
 
 
 @tool
-def run_ruff(workspace: str | None = None) -> list[dict[str, Any]]:
-    """Run Ruff on the active repository and return bounded findings.
-
-    Args:
-        workspace: Optional workspace directory; defaults to the active workspace.
-    """
-    ws_path = _resolve_workspace(workspace)
+def run_ruff() -> list[dict[str, Any]]:
+    """Run Ruff on the active repository workspace and return bounded findings."""
+    ws_path = get_active_workspace()
     findings = _run_ruff(ws_path)
     return _limit_findings(findings)
 
 
 @tool
-def run_bandit(workspace: str | None = None) -> list[dict[str, Any]]:
-    """Run Bandit on the active repository and return bounded findings.
-
-    Args:
-        workspace: Optional workspace directory; defaults to the active workspace.
-    """
-    ws_path = _resolve_workspace(workspace)
+def run_bandit() -> list[dict[str, Any]]:
+    """Run Bandit on the active repository workspace and return bounded findings."""
+    ws_path = get_active_workspace()
     findings = _run_bandit(ws_path)
     return _limit_findings(findings)
 
@@ -400,15 +392,9 @@ def inspect_source(file_path: str, source_code: str) -> dict[str, Any]:
 
 
 @tool
-def existing_test_inspection(
-    workspace: str | None = None,
-) -> list[dict[str, Any]]:
-    """Find existing Python test files, with a bounded result list.
-
-    Args:
-        workspace: Optional workspace directory; defaults to the active workspace.
-    """
-    ws_path = _resolve_workspace(workspace)
+def existing_test_inspection() -> list[dict[str, Any]]:
+    """Find existing Python test files in the active repository workspace."""
+    ws_path = get_active_workspace()
     results: list[dict[str, Any]] = []
 
     for path in ws_path.rglob("*.py"):
